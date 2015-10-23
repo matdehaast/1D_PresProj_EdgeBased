@@ -1,14 +1,14 @@
 __author__ = 'matthew'
 # Solver Global Variables
-nx = 3
+nx = 10
 leng = 1.0
-iter = 1
+iter = 100
 
 # Varibale data
 U_in = 1.0
 P_out = 0.0
 
-#Calc deltaT
+# Calc deltaT
 # C = U*dt/dx
 CFL = 0.1
 deltaT = CFL*(leng/(nx-1))/U_in

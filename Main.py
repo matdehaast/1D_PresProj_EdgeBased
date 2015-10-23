@@ -14,5 +14,3 @@ solver.solverLoop(mesh)
 #Create plotter and plot
 plotter = Plotter(mesh)
 plotter.plot()
-
-print solver.bVect

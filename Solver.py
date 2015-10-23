@@ -11,7 +11,10 @@ class Solver:
         # Data members
         self.AMatr = np.zeros((Glob.nx, Glob.nx),dtype=float)
         self.bVect = np.zeros(Glob.nx, dtype=float)
+
+        self.veloGrad = np.zeros(Glob.nx, dtype=float)
         self.pressGrad = np.zeros(Glob.nx, dtype=float)
+
         self.press = np.zeros(Glob.nx, dtype=float)
         self.deltaWStar = np.zeros(Glob.nx, dtype=float)
 
@@ -45,6 +48,8 @@ class Solver:
             node0 = mesh.edgeTable[iedge].node0
             node1 = mesh.edgeTable[iedge].node1
 
+            faceFlux = 0.0
+
             veloUpwind = mesh.nodeTable[node0].velo
             veloFace = 0.5*(mesh.nodeTable[node0].velo + mesh.nodeTable[node1].velo)
             faceFlux = -Glob.deltaT*veloUpwind*veloFace*mesh.edgeTable[iedge].edgeCoef
@@ -66,7 +71,6 @@ class Solver:
         for inode in range(Glob.nx):
             self.deltaWStar[inode] /= mesh.nodeTable[inode].volu
 
-        print self.deltaWStar
 
     def stepOne(self, mesh):
 
@@ -88,12 +92,12 @@ class Solver:
             faceflux += (uface*mesh.edgeTable[iedge].edgeCoef)
 
             # div(A*U_x*d/dx(u_x))
-            #gradU = (mesh.nodeTable[node1].velo - mesh.nodeTable[node0].velo)/mesh.edgeTable[iedge].edgeLeng
-            #faceflux -= Glob.deltaT*uface*gradU*mesh.edgeTable[iedge].edgeCoef
+            gradU = (mesh.nodeTable[node1].velo - mesh.nodeTable[node0].velo)/mesh.edgeTable[iedge].edgeLeng
+            faceflux -= Glob.deltaT*uface*gradU*mesh.edgeTable[iedge].edgeCoef
 
             #deltaWStarFace
-            deltaWFace = 0.5*(self.deltaWStar[node0] + self.deltaWStar[node1])
-            faceflux += deltaWFace*mesh.edgeTable[iedge].edgeCoef
+            # deltaWFace = 0.5*(self.deltaWStar[node0] + self.deltaWStar[node1])
+            # faceflux += deltaWFace*mesh.edgeTable[iedge].edgeCoef
 
             # add to nodes
             self.bVect[node0] += faceflux
@@ -127,7 +131,7 @@ class Solver:
                 faceVelo = mesh.nodeTable[bfnode].velo
                 self.bVect[bfnode] += faceVelo*mesh.bfTable[bf].bfCoef
 
-
+        print ('L2 Norm ' + str(np.linalg.norm(self.bVect)))
         self.press = np.linalg.solve(self.AMatr,self.bVect)
 
         for inode in range(Glob.nx):
@@ -146,8 +150,8 @@ class Solver:
 
             pressFace = 0.5*(mesh.nodeTable[node0].press + mesh.nodeTable[node1].press)
 
-            self.pressGrad[node0] += pressFace*mesh.edgeTable[iedge].edgeCoef
-            self.pressGrad[node1] -= pressFace*mesh.edgeTable[iedge].edgeCoef
+            self.pressGrad[node0] += pressFace#*mesh.edgeTable[iedge].edgeCoef
+            self.pressGrad[node1] -= pressFace#*mesh.edgeTable[iedge].edgeCoef
 
         for bf in range(mesh.bfTable.size):
 
@@ -155,15 +159,19 @@ class Solver:
             bfnode = mesh.bfTable[bf].bfNode
 
             pressFace = mesh.nodeTable[bfnode].press
-            self.pressGrad[bfnode] += pressFace*mesh.bfTable[bf].bfCoef
+
+            if bf is 0:
+                self.pressGrad[bfnode] -= pressFace
+            elif bf is 1:
+                self.pressGrad[bfnode] += pressFace
 
         for inode in range(Glob.nx):
             self.pressGrad[inode] /= mesh.nodeTable[inode].volu
 
-    def calcGradVeloStar(self, mesh):
+    def calcVeloGrad(self, mesh):
 
         # First zero vector
-        self.veloStarGrad[:] = 0.0
+        self.veloGrad[:] = 0.0
 
         for iedge in range(mesh.numEdges()):
 
@@ -172,11 +180,9 @@ class Solver:
             node1 = mesh.edgeTable[iedge].node1
 
             veloFace = 0.5*(mesh.nodeTable[node0].velo + mesh.nodeTable[node1].velo)
-            veloUpwind = mesh.nodeTable[node0].velo
-            faceFlux = veloFace*veloUpwind*mesh.edgeTable[iedge].edgeCoef
 
-            self.veloStarGrad[node0] += faceFlux
-            self.veloStarGrad[node1] -= faceFlux
+            self.veloGrad[node0] += veloFace
+            self.veloGrad[node1] -= veloFace
 
         for bf in range(mesh.bfTable.size):
 
@@ -184,23 +190,21 @@ class Solver:
             bfnode = mesh.bfTable[bf].bfNode
 
             veloFace = mesh.nodeTable[bfnode].velo
-            veloUpwind = mesh.nodeTable[bfnode].velo
-            faceFlux = veloFace*veloUpwind*mesh.bfTable[bf].bfCoef
 
-            self.veloStarGrad[bfnode] += faceFlux
+            if bf is 0:
+                self.veloGrad[bfnode] -= veloFace
+            elif bf is 1:
+                self.veloGrad[bfnode] += veloFace
 
         for inode in range(Glob.nx):
-            self.veloStarGrad[inode] /= mesh.nodeTable[inode].volu
+            self.veloGrad[inode] /= mesh.nodeTable[inode].volu
 
     def stepTwo(self, mesh):
 
         for inode in range(Glob.nx):
             if mesh.nodeTable[inode].boundType["Velocity"] is False:
                 mesh.nodeTable[inode].velo = mesh.nodeTable[inode].velo - Glob.deltaT*self.pressGrad[inode] \
-                                            + self.deltaWStar[inode]
-                print(Glob.deltaT*self.pressGrad[inode] ,self.deltaWStar[inode])
-        print "\n"
-
+                                            -mesh.nodeTable[inode].velo*Glob.deltaT*self.veloGrad[inode]
 
     def solverLoop(self, mesh):
 
@@ -210,6 +214,8 @@ class Solver:
         for iter in range(Glob.iter):
             self.stepZero(mesh)
             self.stepOne(mesh)
-            #self.calcPressGrad(mesh)
-            #self.stepTwo(mesh)
+            self.calcPressGrad(mesh)
+            self.calcVeloGrad(mesh)
+            self.stepTwo(mesh)
+
 
