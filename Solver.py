@@ -33,8 +33,8 @@ class Solver:
                 mesh.nodeTable[inode].press = 0.0
                 mesh.nodeTable[inode].velo = 0.0
 
-            mesh.nodeTable[inode].press = 2.0 - 0.5*mesh.nodeTable[inode].coor*mesh.nodeTable[inode].coor
-            mesh.nodeTable[inode].velo = mesh.nodeTable[inode].coor
+            # mesh.nodeTable[inode].press = 2.0 - 0.5*mesh.nodeTable[inode].coor*mesh.nodeTable[inode].coor
+            # mesh.nodeTable[inode].velo = mesh.nodeTable[inode].coor
 
     def stepZero(self, mesh):
 
@@ -70,7 +70,6 @@ class Solver:
 
         for inode in range(Glob.nx):
             self.deltaWStar[inode] /= mesh.nodeTable[inode].volu
-
 
     def stepOne(self, mesh):
 
@@ -131,7 +130,6 @@ class Solver:
                 faceVelo = mesh.nodeTable[bfnode].velo
                 self.bVect[bfnode] += faceVelo*mesh.bfTable[bf].bfCoef
 
-        print ('L2 Norm ' + str(np.linalg.norm(self.bVect)))
         self.press = np.linalg.solve(self.AMatr,self.bVect)
 
         for inode in range(Glob.nx):
@@ -206,16 +204,46 @@ class Solver:
                 mesh.nodeTable[inode].velo = mesh.nodeTable[inode].velo - Glob.deltaT*self.pressGrad[inode] \
                                             -mesh.nodeTable[inode].velo*Glob.deltaT*self.veloGrad[inode]
 
+    # mass cosveration d/dx(A*U_x) = 0
+    def checkMassConsv(self, mesh):
+
+        massImbal = np.zeros(Glob.nx, dtype=float)
+
+        for iedge in range(mesh.numEdges()):
+
+            # cache nodes
+            node0 = mesh.edgeTable[iedge].node0
+            node1 = mesh.edgeTable[iedge].node1
+
+            veloFace = 0.5*(mesh.nodeTable[node0].velo + mesh.nodeTable[node1].velo)
+
+            massImbal[node0] += veloFace*mesh.edgeTable[iedge].edgeCoef
+            massImbal[node1] -= veloFace*mesh.edgeTable[iedge].edgeCoef
+
+        for bf in range(mesh.bfTable.size):
+
+            #bfNode
+            bfnode = mesh.bfTable[bf].bfNode
+
+            bfVelo = mesh.nodeTable[bfnode].velo
+
+            massImbal[bfnode] += bfVelo*mesh.bfTable[bf].bfCoef
+
+        for inode in range(Glob.nx):
+            massImbal[inode] /= mesh.nodeTable[inode].volu
+
+        return np.linalg.norm(massImbal)
+
     def solverLoop(self, mesh):
 
         self.setInitCond(mesh)
 
-
         for iter in range(Glob.iter):
-            self.stepZero(mesh)
+            # self.stepZero(mesh)
             self.stepOne(mesh)
             self.calcPressGrad(mesh)
             self.calcVeloGrad(mesh)
             self.stepTwo(mesh)
+            print ("Iter:\t" + str(iter) + "\t" "Mass Imbal: " + str(self.checkMassConsv(mesh)))
 
 

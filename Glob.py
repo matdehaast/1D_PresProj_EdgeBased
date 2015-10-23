@@ -1,8 +1,8 @@
 __author__ = 'matthew'
 # Solver Global Variables
-nx = 10
+nx = 9
 leng = 1.0
-iter = 100
+iter = 1000
 
 # Varibale data
 U_in = 1.0
